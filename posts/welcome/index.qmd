@@ -1,6 +1,6 @@
 ---
 title: "Welcome To Ben's Blog"
-author: "Dixie Normous"
+author: "Ben Sunshine"
 date: "2024-01-28"
 categories: [news]
 ---
