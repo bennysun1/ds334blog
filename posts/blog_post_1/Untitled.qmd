@@ -1,0 +1,12 @@
+---
+title: "Blog Post 01"
+editor: visual
+---
+
+## Introduction
+
+## Primary Visualizations
+
+## Conclusion and Wrap-Up
+
+## Connection to Class Ideas
