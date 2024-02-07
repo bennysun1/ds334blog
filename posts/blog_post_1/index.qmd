@@ -3,9 +3,94 @@ title: "Blog Post 01"
 editor: visual
 ---
 
+```{r}
+library(tidyverse)
+```
+
+
 ## Introduction
+In this blog post, I am analyzing the 2024 MLB Fantasy Baseball Projections. These projections are Zeile Projections, which are baseball specific projections derived from a consensus of 7 sources including ESPN, Draft Buddy, Baseball Think Factory, Steamer Blog, Razzball, Derek Carty, and FanGraphs. This data set consists 747 observations (players) and 17 variables which include: "Player", "Team", "Positions", "AB", "R", "HR", "RBI", "SB", "AVG",  "OBP", "H", "2B", , "3B", "BB", "SO", "SLG", "OPS". This data set is hitter specific, so some of the variables I am most interested in include "HR" (Home Runs), "AVG" (Batting Average), "H" (Hits), and "OPS" (On Base Percentage Plus Slugging Percentage). Using these variables, I aim to visualize which teams will have the strongest project offenses. 
+
+```{r}
+#projections <- read_csv("data/FantasyPros_2024_Projections_H.csv")
+projections <- read_csv("/Users/bensunshine/Documents/SLU_Senior_Year/SP24/data_334/ds334blog/data/FantasyPros_2024_Projections_H.csv")
+
+num_players <- nrow(projections)
+
+projections <-
+  projections %>%
+  mutate(Division = case_when(
+    grepl("(BOS|NYY|TOR|BAL|TB)", Team) ~ "AL EAST",
+    grepl("(MIN|DET|CLE|CWS|KC)", Team) ~ "AL CENTRAL",
+    grepl("(HOU|TEX|SEA|LAA|OAK)", Team) ~ "AL WEST",
+    grepl("(ATL|PHI|MIA|NYM|WSH)", Team) ~ "NL EAST",
+    grepl("(MIL|CHC|CIN|PIT|STL)", Team) ~ "NL CENTRAL",
+    grepl("(LAD|ARI|SD|SF|COL)", Team) ~ "NL WEST"
+  ))
+
+division_order <- c("AL EAST", "AL CENTRAL", "AL WEST", "NL EAST", "NL CENTRAL", "NL WEST", NA)
+```
+
+```{r}
+missing_team <-
+  projections %>%
+  filter(is.na(Team))
+
+team_avg_projections <- 
+  projections %>%
+  group_by(Division, Team) %>%
+  summarise(num_player = n(),
+            avg_hr = mean(HR),
+            avg_baa = mean(AVG),
+            avg_hits = mean(H),
+            avg_obp = mean(OBP)) %>%
+  mutate(Division = factor(Division, levels = division_order))
+```
+
+
 
 ## Primary Visualizations
+
+```{r}
+team_avg_projections %>%
+  mutate(Team = fct_reorder(Team, avg_baa), .desc = T) %>%
+  ggplot(aes(x = Team,
+             y = avg_baa,
+             fill = Division)) +
+  geom_col(color = "black", #fill = "lightblue"
+           ) +
+  labs(y = "Average BAA",
+       title = "Averag BAA Projection by Team") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, 15, by = 2)) +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  scale_y_continuous(n.breaks = 20) +
+
+  coord_flip()
+
+
+team_avg_projections %>%
+  mutate(Team = fct_reorder(Team, avg_baa), .desc = T) %>%
+  ggplot(aes(x = Team,
+             y = avg_baa)) +
+  geom_col(color = "red", fill = "lightblue") +
+  labs(y = "Average BAA",
+       title = "Average BAA") +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(0, 15, by = 2)) +
+  theme(plot.title = element_text(hjust = 0.5),
+        plot.background = element_rect(size = 2),
+        panel.background = element_rect(size = 2)) +
+  facet_grid(~ Division, ) +
+  coord_flip()
+  
+
+```
+
+
+
+
+
 
 ## Conclusion and Wrap-Up
 
