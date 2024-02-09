@@ -3,6 +3,8 @@ title: 'Blog Post 01'
 author: "Ben Sunshine"
 date: "2/9/2024"
 editor: visual
+categories:
+  - Sports
 ---
 
 ## Introduction
