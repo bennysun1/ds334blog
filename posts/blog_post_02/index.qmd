@@ -1,0 +1,93 @@
+---
+title: 'Blog Post 02'
+author: "Ben Sunshine"
+date: "2/23/2024"
+editor: visual
+categories:
+  - Sports
+---
+
+```{r}
+library(tidyverse)
+library(maps)
+state_df <- ggplot2::map_data("state")
+
+```
+
+
+```{r}
+# source: https://projects.fivethirtyeight.com/polls/president-general/2024/national/
+poll_data <- read.csv("~/Downloads/president_polls.csv")
+
+view(
+poll_data %>%
+  filter(!is.na(state)))
+```
+
+
+
+
+```{r}
+library(tidyverse)
+library(here)
+library(fs)
+library(httr2)
+
+working_dir <- here::here("data", "2024", "2024-01-30")
+
+groundhogs_all <- httr2::request("https://groundhog-day.com/api/v1/groundhogs/") |> 
+  httr2::req_perform() |> 
+  httr2::resp_body_json() |> 
+  _$groundhogs |> 
+  tibble::tibble(data = _) |> 
+  tidyr::unnest_wider(data)
+
+groundhogs <- groundhogs_all |> 
+  dplyr::select(
+    -predictions,
+    -successor, # Only 1 groundhog has a successor, we'll mention it in the post.
+    -contact
+  ) |> 
+  janitor::clean_names() |> 
+  dplyr::mutate(
+    # At least one has a stray comma at the end
+    coordinates = stringr::str_remove(coordinates, ",$")
+  ) |> 
+  tidyr::separate_wider_delim(
+    coordinates,
+    ",",
+    names = c("latitude", "longitude")
+  ) |> 
+  dplyr::mutate(
+    # Correct types
+    latitude = as.double(latitude),
+    longitude = as.double(longitude),
+    is_groundhog = as.logical(is_groundhog),
+    active = as.logical(active)
+  )
+
+predictions <- groundhogs_all |> 
+  dplyr::select(id, predictions) |> 
+  tidyr::unnest_longer(predictions) |> 
+  tidyr::unnest_wider(predictions) |> 
+  dplyr::mutate(shadow = as.logical(shadow)) 
+
+# readr::write_csv(file = "data/groundhogs.csv",  x = groundhogs)
+# readr::write_csv(
+#   predictions,
+#   fs::path(working_dir, "predictions.csv")
+# )
+
+joined_gh_data <-
+  inner_join(predictions, groundhogs, by = c("id"= 'id')) %>%
+  filter(!is.na(shadow)) %>%
+  mutate(region = tolower(region)) %>%
+  full_join(state_df, by = c("region" = "region"))
+```
+
+
+```{r}
+a
+  #scale_fill_discrete(ty)
+```
+
