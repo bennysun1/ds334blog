@@ -4,7 +4,8 @@ author: "Ben Sunshine"
 date: "2/23/2024"
 editor: visual
 categories:
-  - Environmental, Mapping 
+  - Environmental
+  - Mapping 
 ---
 
 ## Introduction
