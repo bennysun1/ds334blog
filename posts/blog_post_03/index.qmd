@@ -1,0 +1,146 @@
+---
+title: 'Blog Post 03'
+author: "Ben Sunshine"
+date: "3/8/2024"
+editor: visual
+categories:
+  - Modeling
+---
+
+## Introduction
+
+In my third blog post, I will be analyzing a data set of previous loans to create a statistical model to predict the likelihood of loan default. I acquired this data from [Kaggle](https://www.kaggle.com/datasets/nikhil1e9/loan-default/data), which the user sourced from <https://www.coursera.org/projects/data-science-coding-challenge-loan-default-prediction>. The data set includes 255,347 observations (loans), and 18 variables including LoanID, Age, Income, LoanAmount, CreditScore, MonthsEmployed, NumCreditLines, InterestRate, LoanTerm, DTIRatio (debt to income ratio), Education (highest level of education of borrower), EmploymentType (full-employment, part-time, self-eployed, unemployed), MaritalStatus (single, married, divorced), HasMortgage (yes or no), HasDependents (yes or no), LoanPurpose (home, auto, education, business, or other), HasCoSigner (yes or no), and the response vairable Default (a binary where 0 for no default and 1 for a default). I seek to create and visualize multiple models to determine the best model.
+
+## Primary Visualizations
+
+```{r}
+library(tidyverse)
+library(broom)
+library(GGally)
+library(corrplot)
+library(corrplot)
+library(broom)
+library(modelr)
+
+default <- read_csv('/Users/bensunshine/Documents/SLU_Senior_Year/SP24/data_334/ds334blog/data/Loan_default.csv') %>%
+  select(-LoanID)
+```
+
+```{r}
+# create a correlation matrix
+cor_mat <- cor(default %>% select(-c('Education', 'EmploymentType', 'MaritalStatus',
+       'HasMortgage', 'HasDependents', 'LoanPurpose', 'HasCoSigner')))
+
+corrplot(cor_mat, tl.srt = 45)
+```
+
+-   From the correlation plot above, we can see some of the variables with the highest correlation with Default are Age, InterestRate, Income, MonthsEmployed, and LoanAmount respectively. In my modeling below, I will use some of these variables, as well as some other variables of interest including CreditScore and MaritalStatus.
+
+```{r}
+default_simple_mod <- glm(Default ~ Age + CreditScore + MaritalStatus, data = default)
+
+default_int_mod <- glm(Default ~ Age  + MaritalStatus+ MaritalStatus:Age + CreditScore, data = default)
+
+default_expanded_mod <- glm(Default ~ Age + CreditScore + MaritalStatus + 
+                              MaritalStatus:Age  + I(CreditScore^2), data = default)
+
+```
+
+-   In my models I attempt to predict the response variable, Default, using the same variables, but with different feature engineering techniques for each. In the first model, I use Age, CreditScore, and MaritalStatus to predict Default. In my second model I use the same variables, but include and interaction term between MaritalStatus and Age. I did this to account for the possibility that the relationship between Age and Default may differ for individuals with different marital statuses. In my last model, I include both the previous interaction term, as well as squaring the CreditScore variable. Including a quadratic term allows for flexibility in modeling the complexity of CreditScore.
+
+```{r}
+bind_rows(default_simple_mod %>% tidy(), default_int_mod %>% tidy(), default_expanded_mod %>% tidy(),  .id = "model")
+```
+
+-   In all of the models, Age seems to be the most significant predictor with a p value near zero. For each additional one year increase in age holding all other predictors constant, on average the models predict the odds of default are the predicted odds of default of the previous year of age times 0.996. For the second model with the interaction term interestingly, the odds of default for each additional year of age of a married borrower are higher than that of a single borrower. 
+
+```{r}
+simple <- default_simple_mod %>% glance()
+interaction <- default_int_mod %>% glance()
+expand <- default_expanded_mod %>% glance()
+
+bind_rows(lst(simple, interaction, expand), .id = "model") %>%
+  arrange(AIC) 
+```
+
+-   Upon comparing these models, the second model, using just the interaction term, proved to be the best of the three due to its relatively lower AIC and BIC.
+
+```{r}
+
+grid_simple <- default |>
+  data_grid(
+    #InterestRate = seq_range(InterestRate, n = 3),
+    #DTIRatio = seq_range(DTIRatio, n = 2),
+    CreditScore = seq_range(CreditScore, n= 2),
+    Age = seq_range(Age, n = 2),
+    #LoanTerm = seq_range(LoanTerm, n = 3),
+    # HasMortgage= c("Yes", "No"),
+    # HasCoSigner = c("Yes", "No"),
+    MaritalStatus = c("Divorced", "Married", "Single"),
+    #Income = seq_range(Income, n = 3)
+    ) 
+
+
+grid_int <- default |>
+  data_grid(
+    Age = seq_range(Age, n = 2),
+    MaritalStatus = c("Divorced", "Married", "Single"),
+    #DTIRatio = seq_range(DTIRatio, n = 2),
+    CreditScore = seq_range(CreditScore, n= 2)#,
+    #InterestRate = seq_range(InterestRate, n = 3),
+    #LoanTerm = seq_range(LoanTerm, n = 3),
+    # HasMortgage= c("Yes", "No"),
+    #Income = seq_range(Income, n = 3)
+    ) 
+
+grid_expand <- default |>
+  data_grid(
+    #Income = seq_range(Income, n = 3),
+    Age = seq_range(Age, n = 2),
+    MaritalStatus = c("Divorced", "Married", "Single"),
+    #DTIRatio = seq_range(DTIRatio, n = 2),
+    CreditScore = seq_range(CreditScore, n = 2)#,
+    #InterestRate = seq_range(InterestRate, n = 3),
+    #LoanTerm = seq_range(LoanTerm, n = 3),
+    # HasMortgage= c("Yes", "No"),
+    # HasCoSigner = c("Yes", "No")
+    ) 
+
+```
+
+
+```{r}
+model_simple <- augment(default_simple_mod, newdata = grid_simple, interval = "confidence") %>%
+  mutate(pred_prob = exp(.fitted)/(1+exp(.fitted)))
+model_int <- augment(default_int_mod, newdata = grid_int, interval = "confidence") %>%
+  mutate(pred_prob = exp(.fitted)/(1+exp(.fitted)))
+model_expand <- augment(default_expanded_mod, newdata = grid_expand, interval = "confidence") %>%
+  mutate(pred_prob = exp(.fitted)/(1+exp(.fitted)))
+
+plot_df <- bind_rows(lst(model_simple, model_int, model_expand), .id = "model")
+
+```
+
+
+```{r}
+ggplot(plot_df, 
+       aes(x = CreditScore, y = pred_prob)) +
+  geom_line(aes(color = as.factor(model)), 
+            linewidth = 1.5) +
+  facet_wrap(Age~MaritalStatus) + 
+  labs(x = "Credit Score", y = "Predicted Probability of Default",
+       title = "Comparing Models of Default Probability",
+       color = "Model") +
+  theme(axis.title.x = element_text(hjust = 0.5)) +
+  theme_minimal()
+```
+
+-   From the plot above, it can be seen the slope of each model despite the marital status or age is consistent. What varies is the y intercept for each. It can be seen the group at highest risk of loan default is young divorced borrowers with lower credit scores. The next group would be single young borrowers with lower credit scores. Interestingly, regardless of marital status, older borrowers with low credit scores have a predicted lower probability of default than young borrowers with excellent credit.
+
+## Conclusion and Wrap-Up
+
+The second model using the interaction term between MaritalStatus and Age proved to be the best model of the three having a relatively lower AIC and BIC. One thing I could have done to get greater variability between the models' estimated coefficients would have been to include different variables for each model. This may have made my visualizations more interesting. To take this analysis a step further I would like to utilize more advanced machine learning algorithms. Other algorithms like support vector machines, random forests, and neural networks often offer more accurate results, but offer less interpretability. 
+
+## Connections to Class Ideas
+
+I first created a correlation matrix to aid in feature selection for modeling. This allowed me to avoid multicolinearity for my later modeling. I then created three logistic regression models aimed at classifying whether a borrower's loan would default or not. I first fit the logistic models using standard variables, as well as featured engineered variables with interaction terms and a squared term. I then compared the models and identified the second model with the interaction preformed the best due to its relatively lower AIC and BIC. Then, I followed a similar pipeline to what we completed in class by augmenting my models with grids of sample data to generate predictions. I then plotted these models and faceted each model by the borrowers marital status and age. Each model was represented by a line with a unique color corresponding to that specific model. Doing this allowed me to visualize the complex relationships between different variables in my models.
