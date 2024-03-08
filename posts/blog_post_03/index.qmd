@@ -69,15 +69,9 @@ bind_rows(lst(simple, interaction, expand), .id = "model") %>%
 
 grid_simple <- default |>
   data_grid(
-    #InterestRate = seq_range(InterestRate, n = 3),
-    #DTIRatio = seq_range(DTIRatio, n = 2),
     CreditScore = seq_range(CreditScore, n= 2),
     Age = seq_range(Age, n = 2),
-    #LoanTerm = seq_range(LoanTerm, n = 3),
-    # HasMortgage= c("Yes", "No"),
-    # HasCoSigner = c("Yes", "No"),
-    MaritalStatus = c("Divorced", "Married", "Single"),
-    #Income = seq_range(Income, n = 3)
+    MaritalStatus = c("Divorced", "Married", "Single")
     ) 
 
 
@@ -85,25 +79,14 @@ grid_int <- default |>
   data_grid(
     Age = seq_range(Age, n = 2),
     MaritalStatus = c("Divorced", "Married", "Single"),
-    #DTIRatio = seq_range(DTIRatio, n = 2),
-    CreditScore = seq_range(CreditScore, n= 2)#,
-    #InterestRate = seq_range(InterestRate, n = 3),
-    #LoanTerm = seq_range(LoanTerm, n = 3),
-    # HasMortgage= c("Yes", "No"),
-    #Income = seq_range(Income, n = 3)
+    CreditScore = seq_range(CreditScore, n= 2)
     ) 
 
 grid_expand <- default |>
   data_grid(
-    #Income = seq_range(Income, n = 3),
     Age = seq_range(Age, n = 2),
     MaritalStatus = c("Divorced", "Married", "Single"),
-    #DTIRatio = seq_range(DTIRatio, n = 2),
-    CreditScore = seq_range(CreditScore, n = 2)#,
-    #InterestRate = seq_range(InterestRate, n = 3),
-    #LoanTerm = seq_range(LoanTerm, n = 3),
-    # HasMortgage= c("Yes", "No"),
-    # HasCoSigner = c("Yes", "No")
+    CreditScore = seq_range(CreditScore, n = 2)
     ) 
 
 ```
