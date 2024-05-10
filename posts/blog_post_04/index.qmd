@@ -1,0 +1,825 @@
+---
+title: 'Blog Post 04'
+author: "Ben Sunshine"
+date: "5/10/2024"
+editor: visual
+categories:
+  - Politics
+---
+
+## Introduction
+
+In this blog post, I analayze whether prediction markets are a better way to gauge public support for candidates than traditional polls. This analysis uses three data sources from the 2008 election cycle. The first being data from Intrade, a former Irish web-based trading exchange, sourced from Kosuke Imai (Harvard University)'s GitHub repository. Intrade operated as a prediction market where members traded contracts on the likelihood of certain events occurring. Their contracts are on a point scale of 0 to 100 points where a contract with a value of 0 suggests a given event will not occur. Intrade contracts offer an interpretation of the global market's opinion on the probability of a particular presidential candidate winning. Variables from this data set included the date, state name, state abbreviation, price of democrat candidate's contract, price of a republican candidate's contract the volume of traders of democrat contracts, and volume of traders of republican contracts. The second data set used was polling data also sourced from Kosuke Imai's github repository, that contained over 400 pollsters worth of polling data for US states. The last data set consisted of election outcome data from the 2008 and 2012 election cycles that was scraped from Wikipedia. This data included the percent of votes, number of votes, and electoral votes won by each candidate in the respective elections.
+
+
+```{r, message=FALSE}
+## Load packages
+library(tidyverse)
+library(scales)
+library(plotly)
+library(rvest)
+library(maps)
+library(tigris)
+library(mapview)
+library(sf)
+library(usmap)
+library(leaflet)
+library(leafpop)
+```
+
+```{r, message=FALSE, warning=FALSE}
+## Data cleaning
+state_df <- ggplot2::map_data("state")
+
+us_geo <- tigris::states(cb = TRUE, resolution = '20m')
+
+states_df <- 
+  tibble(state = state.name) %>%
+  bind_cols(tibble(abb = state.abb)) %>% 
+  bind_rows(tibble(state = "District of Columbia", abb = "DC"))
+
+intrade08 <- read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/PREDICTION/intrade08.csv") %>%
+  select(2:7) %>%
+  mutate(PriceD = ifelse(is.na(PriceD), 0, PriceD),
+         PriceR = ifelse(is.na(PriceR), 0, PriceR)) %>%
+  mutate(statename = as.factor(statename),
+         democrat_candidate = "Barack Obama",
+         republican_candidate = "John McCain",
+         pred_winner = case_when(
+           PriceD > PriceR ~ "democrat",
+           PriceR > PriceD ~ "republican",
+           .default = "Tie"
+         )
+  ) %>%
+  rename(#"state" = "statename",
+    "democrat" = "PriceD",
+    "republican" = "PriceR") %>%
+  filter(day < as.Date("2008-11-04"))
+
+intrade12 <- read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/PREDICTION/intrade12.csv") %>%
+  select(2:7) %>%
+  mutate(PriceD = ifelse(is.na(PriceD), 0, PriceD),
+         PriceR = ifelse(is.na(PriceR), 0, PriceR)) %>%
+  mutate(statename = as.factor(statename),
+         democrat_candidate = "Barack Obama",
+         republican_candidate = "Mitt Romney",
+         pred_winner = case_when(
+           PriceD > PriceR ~ "democrat",
+           PriceR > PriceD ~ "republican",
+           .default = "Tie"
+         )
+  )%>%
+  rename(#"state" = "statename",
+    "democrat" = "PriceD",
+    "republican" = "PriceR") %>%
+  filter(day < as.Date("2012-11-06"))
+
+polls08 <- read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/PREDICTION/polls08.csv") %>%
+  rename("statename" = "state") %>%
+  mutate(statename = as.factor(statename), 
+         democrat_candidate = "Barack Obama",
+         republican_candidate = "John McCain") %>%
+  left_join(states_df, by = c("statename" = "abb")) %>%
+  rename("democrat" = "Obama",
+         "republican" = "McCain",
+         "date" = "middate") %>%
+  mutate(pred_winner = case_when(
+    democrat > republican ~ "democrat",
+    republican > democrat ~ "republican",
+    .default = "Tie"
+  )) %>%
+  select(-statename) %>%
+  select(state, everything())
+
+polls12 <- read_csv("https://raw.githubusercontent.com/kosukeimai/qss/master/PREDICTION/polls12.csv") %>%
+  select(2:6) %>%
+  rename("statename" = "state") %>%
+  mutate(statename = as.factor(statename), 
+         democrat_candidate = "Barack Obama",
+         republican_candidate = "Mitt Romney") %>%
+  left_join(states_df, by = c("statename" = "abb")) %>%
+  rename("democrat" = "Obama",
+         "republican" = "Romney",
+         "date" = "middate") %>%
+  mutate(pred_winner = case_when(
+    democrat > republican ~ "democrat",
+    republican > democrat ~ "republican",
+    .default = "Tie"
+  )) %>%
+  select(-statename) %>%
+  select(state, everything())
+
+
+## '08 election
+`2008_results_scrape` <- read_html("https://en.wikipedia.org/wiki/2008_United_States_presidential_election")
+
+`2008_election_tables` <- `2008_results_scrape` %>% html_nodes("table.wikitable")
+
+`2008_results_table` <- `2008_election_tables`[[10]]
+
+`2008_results_df` <- 
+  `2008_results_table` %>% 
+  html_table(header = T) 
+
+new_names <- c("Column1", 
+               "Column2", 
+               "Barack_Obama_Democratic", 
+               "Barack_Obama_Democratic",
+               "Barack_Obama_EV", 
+               "John_McCain_Republican", 
+               "John_McCain_Republican",
+               "John_McCain_EV", 
+               "Ralph_Nader_Independent", 
+               "Ralph_Nader_Independent",
+               "Ralph_Nader_Independent", 
+               "Bob_Barr_Libertarian", 
+               "Bob_Barr_Libertarian",
+               "Bob_Barr_Libertarian", 
+               "Chuck_Baldwin_Constitution", 
+               "Chuck_Baldwin_Constitution",
+               "Chuck_Baldwin_Constitution", 
+               "Cynthia_McKinney_Green", 
+               "Cynthia_McKinney_Green",
+               "Cynthia_McKinney_Green", 
+               "Others","Others","Others", 
+               "Margin", "Margin",
+               "Total_votes", "Total_votes")
+
+
+# Rename the nameless columns
+names(`2008_results_df`)[names(`2008_results_df`) == ""] <- new_names
+
+results_2008_df <-
+  `2008_results_df` %>%
+  select(1,2,4,7,26) %>%
+  rename("state" = "Column1",
+         "ev" = "Column2",
+         "democrat" = "Barack ObamaDemocratic",
+         "republican" = "John McCainRepublican",
+         "votes" = "Total votes") %>%
+  slice(-1) %>%
+  mutate(votes = as.numeric(str_replace_all(votes, ",", "")),
+         democrat = as.numeric(str_replace_all(democrat, "%", "")),
+         republican = as.numeric(str_replace_all(republican, "%", "")),
+         state = as.factor(state)) %>%
+  mutate(state = case_when(
+    state == "Nebraska†" ~ "Nebraska",
+    state == "Maine†" ~ "Maine",
+    .default = state
+  ),
+  winner = case_when(
+    democrat > republican ~ "democrat",
+    democrat < republican ~ "republican",
+    .default = "tie")
+  )
+
+ev_2008 <- results_2008_df %>% select(state, ev)
+
+
+
+## '12 Election
+`2012_results_scrape` <- read_html("https://en.wikipedia.org/wiki/2012_United_States_presidential_election")
+
+`2012_election_tables` <- `2012_results_scrape` %>% html_nodes("table.wikitable")
+
+`2012_results_table` <- `2012_election_tables`[[8]]
+
+`2012_results_df` <- 
+  `2012_results_table` %>% 
+  html_table(header = T) 
+
+names(`2012_results_df`)[4] <- "Obama_EV"
+names(`2012_results_df`)[7] <- "Romney_EV"
+
+`2012_results_df` <-
+  `2012_results_df` %>%
+  select(1,3,4,6,7,19) %>%
+  mutate(ev = ifelse(Obama_EV == "–", Romney_EV, Obama_EV)) %>%
+  select(1,2,4,6,7)
+
+
+new_names <- c("state", "democrat", 
+               "republican", "votes")
+
+# Rename the nameless columns
+names(`2012_results_df`)[names(`2012_results_df`) == ""] <- new_names
+
+results_2012_df <-
+  `2012_results_df` %>%
+  rename("state" = "State/District",
+         "democrat" = "Barack ObamaDemocratic",
+         "republican" = "Mitt RomneyRepublican",
+         "votes" = "Total") %>%
+  slice(-1) %>%
+  mutate(votes = as.numeric(str_replace_all(votes, ",", "")),
+         democrat = as.numeric(str_replace_all(democrat, "%", "")),
+         republican = as.numeric(str_replace_all(republican, "%", "")),
+         state = as.factor(state)) %>%
+  filter(state != "ME-1Tooltip Maine's 1st congressional district" &
+           state != "ME-2Tooltip Maine's 2nd congressional district" &
+           state != "NE-1Tooltip Nebraska's 1st congressional district") %>%
+  mutate(state = case_when(
+    state == "Nebraska†" ~ "Nebraska",
+    state == "Maine†" ~ "Maine",
+    state == "District of ColumbiaDistrict of Columbia" ~ "District of Columbia",
+    state == "New Jersey[121]" ~ "New Jersey",
+    state == "New York[122]" ~ "New York",
+    state == "Ohio[123]" ~ "Ohio",
+    state == "Wisconsin[124]" ~ "Wisconsin",
+    .default = state
+  ),
+  winner = case_when(
+    democrat > republican ~ "democrat",
+    democrat < republican ~ "republican",
+    .default = "tie")
+  )
+
+ev_2012 <- results_2012_df %>% select(state, ev)
+
+
+intrade_combined <- bind_rows(
+  mutate(intrade08, year = 2008),
+  mutate(intrade12, year = 2012)
+) %>%
+  rename("date" = "day",
+         "state" = "statename")
+
+polls_combined <- bind_rows(
+  mutate(polls08, year = 2008),
+  mutate(polls12, year = 2012)
+) %>%
+  mutate(scale = 100,
+         state = as.factor(state))
+
+election_results_combined <-
+  bind_rows(results_2008_df %>%
+              filter(state != "U.S. Total") %>%
+              mutate(year = 2008), 
+            results_2012_df %>%
+              filter(state != "U.S. Total") %>%
+              mutate(year = 2012)) %>%
+  mutate(dem_ev = ifelse(winner == "democrat", as.numeric(ev), 0),
+         rep_ev = ifelse(winner == "republican", as.numeric(ev), 0))
+
+intrade_combined_election_eve_08 <-
+  intrade_combined %>%
+  filter((year == 2008 & date <= "2008-11-03") #|
+         #(year == 2012 & date == "2012-11-05")
+  ) %>%
+  #filter(!is.na(democrat) & !is.na(republican)) %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  left_join(results_2008_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = ifelse(actual_winner == pred_winner, "#00BA38", "#F8766D")) %>%
+  ungroup()
+
+
+intrade_combined_election_eve_12 <-
+  intrade_combined %>%
+  filter((year == 2012 & date <= "2012-11-05") #|
+         #(year == 2012 & date == "2012-11-05")
+  ) %>%
+  #filter(!is.na(democrat) & !is.na(republican)) %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  left_join(results_2012_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = ifelse(actual_winner == pred_winner, "#00BA38", "#F8766D")) %>%
+  ungroup()
+
+
+
+polls_combined_election_eve_08 <-
+  polls_combined %>%
+  filter((year == 2008 & date <= "2008-11-03")) %>%
+  group_by(state, date, year) %>%
+  summarise(democrat_avg = mean(democrat),
+            republican_avg = mean(republican)) %>%
+  ungroup() %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  mutate(pred_winner = case_when(
+    democrat_avg > republican_avg ~ "democrat",
+    republican_avg > democrat_avg ~ "republican",
+    .default = "Tie"
+  )) %>%
+  left_join(results_2008_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = ifelse(actual_winner == pred_winner, "#00BA38", "#F8766D"))
+
+polls_combined_election_eve_12 <-
+  polls_combined %>%
+  filter((year == 2012 & date <= "2012-11-05")) %>%
+  group_by(state, date, year) %>%
+  summarise(democrat_avg = mean(democrat),
+            republican_avg = mean(republican)) %>%
+  ungroup() %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  mutate(pred_winner = case_when(
+    democrat_avg > republican_avg ~ "democrat",
+    republican_avg > democrat_avg ~ "republican",
+    .default = "Tie"
+  )) %>%
+  left_join(results_2012_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = ifelse(actual_winner == pred_winner, "#00BA38", "#F8766D"))
+
+polls_eve_combined_08_12 <-
+  bind_rows(polls_combined_election_eve_08, polls_combined_election_eve_12)
+
+# used for finding only states in common between all data sets
+# for plotting electoral votes fairly
+all_states_list <-
+  inner_join(election_results_combined, 
+             intrade_combined_election_eve_08, 
+             polls_combined_election_eve_08, 
+             by = "state") %>%
+  distinct(state) %>%
+  pull()
+```
+
+
+## Visualizations
+
+<div style="text-align: left;">
+
+```{r warning=FALSE}
+## Electoral votes on election-eve 2008
+intrade_08_ev <-
+  intrade_combined_election_eve_08 %>%
+  filter(state %in% all_states_list) %>%
+  left_join(ev_2008, by = "state") %>%
+  mutate(na_ev = as.numeric(ifelse(pred_winner == "Tie", ev, 0)),
+         dem_ev = as.numeric(ifelse(pred_winner == "democrat", ev, 0)),
+         rep_ev = as.numeric(ifelse(pred_winner == "republican", ev, 0))) %>%
+  group_by(year) %>%
+  summarise(dem_ev_sum = sum(dem_ev),
+            rep_ev_sum = sum(rep_ev),
+            na_ev_sum = sum(na_ev)) %>%
+  rename("Democrat" = "dem_ev_sum",
+         "Republican" = "rep_ev_sum",
+         "NA" = "na_ev_sum",
+         "Year" = "year") %>%
+  pivot_longer(cols = c("Democrat","Republican","NA"), 
+               values_to = "electoral_votes", 
+               names_to = "Party") %>%
+  mutate(Year = as.factor(Year))
+
+polls_o8_ev <-
+  polls_combined_election_eve_08 %>%
+  filter(state %in% all_states_list) %>%
+  left_join(ev_2008, by = "state") %>%
+  mutate(na_ev = as.numeric(ifelse(pred_winner == "Tie", ev, 0)),
+         dem_ev = as.numeric(ifelse(pred_winner == "democrat", ev, 0)),
+         rep_ev = as.numeric(ifelse(pred_winner == "republican", ev, 0))) %>%
+  group_by(year) %>%
+  summarise(dem_ev_sum = sum(dem_ev),
+            rep_ev_sum = sum(rep_ev),
+            na_ev_sum = sum(na_ev)) %>%
+  rename("Democrat" = "dem_ev_sum",
+         "Republican" = "rep_ev_sum",
+         "NA" = "na_ev_sum",
+         "Year" = "year") %>%
+  pivot_longer(cols = c("Democrat","Republican","NA"), 
+               values_to = "electoral_votes", 
+               names_to = "Party") %>%
+  mutate(Year = as.factor(Year))
+
+
+summary_results_ev <-
+  election_results_combined %>%
+  filter(state %in% all_states_list) %>%
+  group_by(year) %>%
+  summarise(dem_ev_sum = sum(dem_ev),
+            rep_ev_sum = sum(rep_ev)) %>%
+  rename("Democrat" = "dem_ev_sum",
+         "Republican" = "rep_ev_sum",
+         "Year" = "year") %>%
+  pivot_longer(cols = c("Democrat","Republican"), 
+               values_to = "electoral_votes", 
+               names_to = "Party") %>%
+  mutate(Year = as.factor(Year))
+
+middle_val <- 
+  summary_results_ev %>%
+  filter(Year == 2008) %>%
+  summarise(middle_val = sum(electoral_votes)/2) %>%
+  pull()
+
+
+stacked_df <-
+  bind_rows(summary_results_ev %>%
+              mutate(Source = "Official Election Results"), 
+            intrade_08_ev %>%
+              mutate(Source = "Betting Predicted Results"),
+            polls_o8_ev %>%
+              mutate(Source = "Poll Predicted Results")) %>%
+  mutate(Party = fct_relevel(Party, "Republican", "NA","Democrat"),
+         source = as.factor(Source),
+         Source = fct_relevel(Source, 
+                              "Official Election Results", 
+                              "Betting Predicted Results",
+                              "Poll Predicted Results")) %>%
+  filter(Year == 2008) %>%
+  group_by(Source) %>%
+  ungroup()
+
+electoral_results <-
+  ggplot(stacked_df,
+         aes(x = Source, 
+             y = electoral_votes, 
+             fill = Party)) +
+  geom_histogram(position = "stack", stat = "identity") +
+  scale_fill_manual(values = c("Republican" = "#E81B23",
+                               "Democrat" = "#00AEF3",
+                               "NA"="grey")) +
+    labs(title = "2008 Election Electoral Votes") +
+    geom_hline(yintercept = middle_val, colour = "black", linetype = "dashed", alpha = 0.8) +
+    coord_flip() +
+    theme_minimal() +
+    theme(plot.title = element_text(hjust = 0.5))
+
+plotly::ggplotly(electoral_results)
+```
+
+
+<div>
+
+<br />
+
+<div>
+
+-   Here it can be seen the Intrade prediction market outperformed the conventional pollsters by 15 electoral votes. In fact, Intrade forecasted the exact electoral college outcome on election-eve of 2008 (November 3rd, 2008). To get a better sense of the election break down, next we will analyze a choropleth map of state classifications below.
+
+<div>
+
+<br />
+
+
+
+<div style="text-align: left;">
+
+```{r}
+## Intrade Election-eve Classification Map
+intrade_classification_data <-
+  intrade_combined %>%
+  filter((year == 2008 & date <= as.Date("2008-11-03"))) %>%
+  group_by(state, date, year) %>%
+  summarise(democrat_avg = mean(democrat),
+            republican_avg = mean(republican)) %>%
+  ungroup() %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  mutate(pred_winner = case_when(
+    democrat_avg > republican_avg ~ "democrat",
+    republican_avg > democrat_avg ~ "republican",
+    .default = "Tie"
+  )) %>%
+  left_join(results_2008_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = as.factor(case_when(
+    pred_winner == "Tie" ~ "Tie",
+    actual_winner == pred_winner ~ "Correct", 
+    .default = "Incorrect")
+  )) %>%
+  ungroup()
+
+intrade_classification_data$color <- 
+  fct_relevel(intrade_classification_data$color, "Correct", "Incorrect", "Tie")
+
+intrade_classification_data <- 
+  inner_join(us_geo, intrade_classification_data, by = c("NAME" = "state"))
+
+
+intrade_map_08 <-
+mapview(intrade_classification_data, zcol = "color", color = "white", 
+        col.regions = c("seagreen3", "red"),
+        label = glue::glue("{intrade_classification_data$NAME}"),
+        popup = popupTable(intrade_classification_data, 
+                           zcol = c("NAME",
+                                    "date", 
+                                    "democrat_avg", 
+                                    "republican_avg", 
+                                    "pred_winner", 
+                                    "actual_winner",
+                                    "color"),
+                           feature.id = F, 
+                           row.numbers = F)
+)
+
+
+```
+
+
+<div>
+
+<div style="text-align: center;">
+
+
+2008 Intrade Markets Classifications
+
+
+<div>
+
+
+<div style="text-align: left;">
+
+
+```{r}
+intrade_map_08
+```
+
+<div>
+
+
+<div style="text-align: left;">
+
+
+```{r warning=FALSE}
+## Poll election-eve classification map
+poll_classification_data_08 <-
+  polls_combined %>%
+  filter((year == 2008 & date <= as.Date("2008-11-03"))) %>%
+  group_by(state, date, year) %>%
+  summarise(democrat_avg = mean(democrat),
+            republican_avg = mean(republican)) %>%
+  ungroup() %>%
+  group_by(state) %>%
+  slice_max(date) %>%
+  mutate(pred_winner = case_when(
+    democrat_avg > republican_avg ~ "democrat",
+    republican_avg > democrat_avg ~ "republican",
+    .default = "Tie"
+  )) %>%
+  left_join(results_2008_df %>% select(state, winner), by = "state") %>%
+  rename("actual_winner"="winner") %>%
+  mutate(color = as.factor(case_when(
+    pred_winner == "Tie" ~ "Tie",
+    actual_winner == pred_winner ~ "Correct", 
+    .default = "Incorrect")
+  )) %>%
+  ungroup()
+
+poll_classification_data_08$color <- 
+  fct_relevel(poll_classification_data_08$color, "Correct", "Incorrect", "Tie")
+
+poll_classification_data_08 <- 
+  inner_join(us_geo, poll_classification_data_08, by = c("NAME" = "state"))
+
+
+polls_map_08 <-
+  mapview(poll_classification_data_08, zcol = "color", color = "white", 
+          col.regions = c("seagreen3", "red"),
+          label = glue::glue("{poll_classification_data_08$NAME}"),
+          popup = popupTable(poll_classification_data_08, 
+                             zcol = c("NAME",
+                                      "date", 
+                                      "democrat_avg", 
+                                      "republican_avg", 
+                                      "pred_winner", 
+                                      "actual_winner",
+                                      "color"),
+                             feature.id = F, 
+                             row.numbers = F)
+  )
+
+
+```
+
+<div>
+
+<div style="text-align: center;">
+
+2008 Polling Classifications
+
+<div>
+
+<div style="text-align: left;">
+
+
+```{r}
+polls_map_08
+```
+
+<div>
+
+
+
+<br />
+
+<div style="text-align: left;">
+
+
+-   On election-eve of 2008, both the pollsters and the Intrade prediction market wrongly predicted Indiana and Missouri nominating John McCain and Barack Obama, respectively. Intrade was able to achieve a perfect electoral vote total because both Missouri and Indiana have 11 electoral votes, so misclassifying the two states had no effect on the total electoral outcome. Additionally, the polls misclassified North Carolina, predicting McCain as the winner.
+
+<div>
+
+<br />
+
+
+```{r warning=FALSE}
+## NC 2008 Time Series Betting
+nc_08_betting <-
+  probabilities <-
+  intrade_combined %>%
+  filter(year == 2008) %>%
+  filter(date >= as.Date("2008-01-01")) %>%
+  filter(state == "North Carolina") %>%
+  filter(democrat + republican > 30) %>%
+  group_by(date) %>%
+  summarise(Democrat = round(mean(democrat, na.rm = T), digits = 2),
+            Republican = round(mean(republican, na.rm = T), digits = 2)) %>%
+  ungroup() %>%
+  rename("Date" = "date") %>%
+  ggplot(aes(x = Date,
+             y = Democrat)
+  ) +
+  geom_line(aes(x = Date, 
+                y = Democrat),
+            colour = "#00AEF3") +
+  geom_hline(yintercept = 50, colour = "black") +
+  geom_line(aes(x = Date, 
+                y = Republican),
+            colour = "#E81B23") +
+  
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-01-03")),
+                 text = paste0("Obama Wins Iowa Democratic Caucus\n",
+                               "Date: 2008-01-03")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-02-05")),
+                 text = paste0("2008 Super Tuesday\n",
+                               "Date: 2008-02-05")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-09-15")),
+                 text = paste0("Lehman Brothers File for Bankruptcy\n",
+                               "Date: 2008-09-15")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-09-06")),
+                 text = paste0("Fannie Mae and Freddie Mac Seized\n",
+                               "Date: 2008-09-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-08-29")),
+                 text = paste0("McCain Announces Palin as VP\n",
+                               "Date: 2008-08-29")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-08-27")),
+                 text = paste0("Obama Wins Nomination\nAnnounces Biden as VP\n",
+                               "Date: 2008-08-27")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-11-04")),
+                 text = paste0("2008 Election Day\n",
+                               "Date: 2008-11-04")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-08-11")),
+                 text = paste0("2012 Iowa Caucuses\n",
+                               "Date: 2012-08-11")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-03-06")),
+                 text = paste0("Super Tuesday 2012\n",
+                               "Date: 2012-03-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-04-25")),
+                 text = paste0("RNC Declares Romney as Republican Nominee\n",
+                               "Date: 2012-04-25")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-08-11")),
+                 text = paste0("Mitt Romney Announces Paul Ryan as VP\n",
+                               "Date: 2012-08-11")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-10-29")),
+                 text = paste0("Hurricane Sandy\n",
+                               "Date: 2012-10-29")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-11-06")),
+                 text = paste0("2012 Election Day\n",
+                               "Date: 2012-11-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  scale_y_continuous(limits = c(0,100)) +
+  labs(x = "Date",
+       y = "Closing Price of Party Nominee's Market",
+       title = "2008 North Carolina Intrade Contract Closing Prices") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+nc_08_betting <-
+  plotly::ggplotly(nc_08_betting,  
+                   tooltip = c("x",
+                               "y",
+                               "text"))
+
+
+nc_08_polls <-
+  probabilities <-
+  polls_combined %>%
+  filter(year == 2008) %>%
+  filter(state == "North Carolina") %>%
+  filter(date >= as.Date("2008-01-01")) %>%
+  filter(democrat + republican > 30) %>%
+  group_by(date) %>%
+  summarise(Democrat = round(mean(democrat, na.rm = T), digits = 2),
+            Republican = round(mean(republican, na.rm = T), digits = 2)) %>%
+  ungroup() %>%
+  rename("Date" = "date") %>%
+  ggplot(aes(x = Date,
+             y = Democrat)
+  ) +
+  geom_line(aes(x = Date, 
+                y = Democrat),
+            colour = "#00AEF3") +
+  geom_hline(yintercept = 50, colour = "black") +
+  geom_line(aes(x = Date, 
+                y = Republican),
+            colour = "#E81B23") +
+  
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-01-03")),
+                 text = paste0("Obama Wins Iowa Democratic Caucus\n",
+                               "Date: 2008-01-03")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-02-05")),
+                 text = paste0("2008 Super Tuesday\n",
+                               "Date: 2008-02-05")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-09-15")),
+                 text = paste0("Lehman Brothers File for Bankruptcy\n",
+                               "Date: 2008-09-15")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-09-06")),
+                 text = paste0("Fannie Mae and Freddie Mac Seized\n",
+                               "Date: 2008-09-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-08-29")),
+                 text = paste0("McCain Announces Palin as VP\n",
+                               "Date: 2008-08-29")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-08-27")),
+                 text = paste0("Obama Wins Nomination\nAnnounces Biden as VP\n",
+                               "Date: 2008-08-27")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2008-11-04")),
+                 text = paste0("2008 Election Day\n",
+                               "Date: 2008-11-04")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-08-11")),
+                 text = paste0("2012 Iowa Caucuses\n",
+                               "Date: 2012-08-11")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-03-06")),
+                 text = paste0("Super Tuesday 2012\n",
+                               "Date: 2012-03-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-04-25")),
+                 text = paste0("RNC Declares Romney as Republican Nominee\n",
+                               "Date: 2012-04-25")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-08-11")),
+                 text = paste0("Mitt Romney Announces Paul Ryan as VP\n",
+                               "Date: 2012-08-11")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-10-29")),
+                 text = paste0("Hurricane Sandy\n",
+                               "Date: 2012-10-29")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  geom_vline(aes(xintercept = as.numeric(as.Date("2012-11-06")),
+                 text = paste0("2012 Election Day\n",
+                               "Date: 2012-11-06")), 
+             colour = "black", linetype = "dashed", alpha = 0.8) +
+  scale_y_continuous(limits = c(0,100)) +
+  labs(x = "Date",
+       y = "Closing Price of Party Nominee's Market",
+       title = "2008 Missouri Polling Support") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
+
+nc_08_polls <-
+  plotly::ggplotly(nc_08_polls,  
+                   tooltip = c("x",
+                               "y",
+                               "text"))
+
+```
+
+
+```{r}
+nc_08_betting
+
+nc_08_polls
+```
+
+
+<div style="text-align: left;">
+
+
+-   The time series data in the plots above portrays the discrepancy in predicted election outcomes in North Carolina between Intrade prediction markets and polling data. It can be seen above with the Intrade data, a sharp decline of support for John McCain occurs in September, marked by the second vertical line from the far-right on the plot. Interestingly, this decline in contract value coincides with the day Lehman Brothers filed for bankruptcy on September 15th, 2008. This event was a catalyst for the 2008 recession, representing the largest bankruptcy in US history, with $691 billion in assets held before its collapse. Its repercussions rippled through the US economy, causing international market turmoil and the downfall of numerous banks. Interestingly, this significant decline in contract value is not mirrored in the polling data. Instead, following the Lehman Brothers' bankruptcy, polling in North Carolina narrowed between Obama and McCain.
+
+
+<div>
+
+<div style="text-align: left;">
+
+## Conclusion and Wrap-Up
+
+The visualizations compared Intrade's prediction market and traditional polling data in the context of US presidential elections. Using line plots, overlaid with interactive historical event lines, revealed current events had a greater influence on contract values within the prediction market compared to polling support. Betting markets naturally react more rapidly to new information than polls, helping them accurately reflect real time public sentiment. However, to truly determine if betting markets outperform polls, additional data beyond one election cycle is needed. In the 2012 election for example, Intrade contract values diverged significantly in close races in swing states, demonstrating the necessity for more observations to assess the performance of these two methodologies.
+
+<div>
