@@ -9,8 +9,6 @@ categories:
 
 ## Introduction
 
-Here are some suggested corrections and improvements for clarity:
-
 In this blog post, I analyze whether prediction markets are a better way to gauge public support for candidates than traditional polls. This analysis uses three data sources from the 2008 election cycle. The first is data from Intrade, a former Irish web-based trading exchange, sourced from Kosuke Imai (Harvard University)'s GitHub repository. Intrade operated as a prediction market where members traded contracts on the likelihood of certain events occurring. Their contracts are on a point scale of 0 to 100, where a contract with a value of 0 suggests a given event will not occur. Intrade contracts offer an interpretation of the global market's opinion on the probability of a particular presidential candidate winning. Variables from this data set include the date, state name, state abbreviation, price of the Democratic candidate's contract, price of the Republican candidate's contract, the volume of traders of Democratic contracts, and the volume of traders of Republican contracts. The second data set used was polling data, also sourced from Kosuke Imai's GitHub repository, that contained over 400 pollsters' worth of polling data for US states. The last data set consisted of election outcome data from the 2008 and 2012 election cycles that was scraped from Wikipedia. This data included the percentage of votes, number of votes, and electoral votes won by each candidate in the respective elections.
 
 
