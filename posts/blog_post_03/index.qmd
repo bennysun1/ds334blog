@@ -22,7 +22,7 @@ library(corrplot)
 library(broom)
 library(modelr)
 
-default <- read_csv('/Users/bensunshine/Documents/SLU_Senior_Year/SP24/data_334/ds334blog/data/Loan_default.csv') %>%
+default <- read_csv('/Users/bensunshine/Documents/SLU/SLU_Senior_Year/SP24/data_334/ds334blog/data/Loan_default.csv') %>%
   select(-LoanID)
 ```
 
@@ -37,12 +37,12 @@ corrplot(cor_mat, tl.srt = 45)
 -   From the correlation plot above, we can see some of the variables with the highest correlation with Default are Age, InterestRate, Income, MonthsEmployed, and LoanAmount respectively. In my modeling below, I will use some of these variables, as well as some other variables of interest including CreditScore and MaritalStatus.
 
 ```{r}
-default_simple_mod <- glm(Default ~ Age + CreditScore + MaritalStatus, data = default)
+default_simple_mod <- glm(Default ~ Age + CreditScore + MaritalStatus, data = default, family = binomial)
 
-default_int_mod <- glm(Default ~ Age  + MaritalStatus+ MaritalStatus:Age + CreditScore, data = default)
+default_int_mod <- glm(Default ~ Age  + MaritalStatus+ MaritalStatus:Age + CreditScore, data = default, family = binomial)
 
 default_expanded_mod <- glm(Default ~ Age + CreditScore + MaritalStatus + 
-                              MaritalStatus:Age  + I(CreditScore^2), data = default)
+                              MaritalStatus:Age  + I(CreditScore^2), data = default, family = binomial)
 
 ```
 
@@ -52,7 +52,7 @@ default_expanded_mod <- glm(Default ~ Age + CreditScore + MaritalStatus +
 bind_rows(default_simple_mod %>% tidy(), default_int_mod %>% tidy(), default_expanded_mod %>% tidy(),  .id = "model")
 ```
 
--   In all of the models, Age seems to be the most significant predictor with a p value near zero. For each additional one year increase in age holding all other predictors constant, on average the models predict the odds of default are the predicted odds of default of the previous year of age times 0.996. For the second model with the interaction term interestingly, the odds of default for each additional year of age of a married borrower are higher than that of a single borrower. 
+-   In all of the models, Age seems to be the most significant predictor with a p value near zero. For each additional one year increase in age holding all other predictors constant, on average the models predict the odds of default are the predicted odds of default of the previous year of age times 0.964. For the second model with the interaction term interestingly, the odds of default for each additional year of age of a married borrower are higher than that of a single borrower.
 
 ```{r}
 simple <- default_simple_mod %>% glance()
@@ -91,7 +91,6 @@ grid_expand <- default |>
 
 ```
 
-
 ```{r}
 model_simple <- augment(default_simple_mod, newdata = grid_simple, interval = "confidence") %>%
   mutate(pred_prob = exp(.fitted)/(1+exp(.fitted)))
@@ -103,7 +102,6 @@ model_expand <- augment(default_expanded_mod, newdata = grid_expand, interval = 
 plot_df <- bind_rows(lst(model_simple, model_int, model_expand), .id = "model")
 
 ```
-
 
 ```{r}
 ggplot(plot_df, 
@@ -122,7 +120,7 @@ ggplot(plot_df,
 
 ## Conclusion and Wrap-Up
 
-The second model using the interaction term between MaritalStatus and Age proved to be the best model of the three having a relatively lower AIC and BIC. One thing I could have done to get greater variability between the models' estimated coefficients would have been to include different variables for each model. This may have made my visualizations more interesting. To take this analysis a step further I would like to utilize more advanced machine learning algorithms. Other algorithms like support vector machines, random forests, and neural networks often offer more accurate results, but offer less interpretability. 
+The second model using the interaction term between MaritalStatus and Age proved to be the best model of the three having a relatively lower AIC and BIC. One thing I could have done to get greater variability between the models' estimated coefficients would have been to include different variables for each model. This may have made my visualizations more interesting. To take this analysis a step further I would like to utilize more advanced machine learning algorithms. Other algorithms like support vector machines, random forests, and neural networks often offer more accurate results, but offer less interpretability.
 
 ## Connections to Class Ideas
 
